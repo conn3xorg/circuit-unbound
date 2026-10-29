@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Conn3x
+        env: &gh
+          GH_TOKEN: ${{ github.token }}
+        run: &install |
+          tag=$(gh release view -R conn3xorg/conn3x --json tagName -q .tagName)
+          file="conn3x_${tag#v}_linux_amd64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -sSfLO "https://github.com/conn3xorg/conn3x/releases/download/$tag/$file"
+          curl -sSfLO "https://github.com/conn3xorg/conn3x/releases/download/$tag/checksums.txt"
+          grep " $file\$" checksums.txt | sha256sum -c -
+          mkdir -p bin && tar -xzf "$file" -C bin conn3x
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+      - run: conn3x version
+      - run: conn3x fmt -check -recursive
+      - name: Validate
+        run: conn3x init -backend=false && conn3x validate
+      - name: Validate the example
+        working-directory: examples/local
+        run: conn3x init -backend=false && conn3x validate
+
+  e2e:
+    needs: validate
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [rocky10, fedora45, ubuntu2404, debian13]
+        upstream: [recursion, tls]
+    name: e2e (${{ matrix.distro }}, ${{ matrix.upstream }})
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The test host images live in the Conn3x repo.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: conn3xorg/conn3x
+          ref: main
+          path: conn3x
+          persist-credentials: false
+          sparse-checkout: test/images
+      - name: Install Conn3x
+        env: *gh
+        run: *install
+      - name: Start the ${{ matrix.distro }} host
+        working-directory: examples/local
+        env:
+          CONTAINERFILE: ${{ github.workspace }}/conn3x/test/images/${{ matrix.distro }}/Containerfile
+          PODMAN: sudo podman
+        run: ./up.sh
+      - name: Apply, then plan again with no changes
+        working-directory: examples/local
+        env:
+          TF_VAR_forwarders: ${{ matrix.upstream == 'tls' && '["1.1.1.1#cloudflare-dns.com","9.9.9.9#dns.quad9.net"]' || '[]' }}
+        run: |
+          conn3x init
+          conn3x apply -auto-approve
+          conn3x plan -detailed-exitcode
+      # The container's own address is outside the example's access_control,
+      # so a query sent to it comes from there and is refused.
+      - name: Check DNSSEC, local data, the cache and access control
+        run: |
+          sudo podman exec -i circuit-unbound bash -eu <<'EOF'
+          if command -v apt-get >/dev/null; then
+            apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq bind9-dnsutils >/dev/null
+          else
+            dnf -y -q install bind-utils
+          fi
+          # The first lookups after a start also fetch the root's keys.
+          for _ in $(seq 10); do dig @127.0.0.1 example.com | grep -q 'status: NOERROR' && break; sleep 2; done
+          dig @127.0.0.1 example.com | tee /dev/stderr | grep -q 'flags:.* ad[ ;]'
+          dig @127.0.0.1 dnssec-failed.org | grep -q 'status: SERVFAIL'
+          [ "$(dig +short @127.0.0.1 nas.home.arpa)" = 192.168.1.10 ]
+          dig @127.0.0.1 printer.home.arpa | grep -q 'status: NXDOMAIN'
+          hits() { unbound-control stats_noreset | sed -n 's/^total.num.cachehits=//p'; }
+          before=$(hits)
+          dig @127.0.0.1 example.com >/dev/null
+          [ "$(hits)" -gt "$before" ]
+          addr=$(getent ahostsv4 "$(cat /proc/sys/kernel/hostname)" | awk '$1 !~ /^127\./ { print $1; exit }')
+          dig @"$addr" example.com | grep -q 'status: REFUSED'
+          EOF
+      - name: Clean up
+        if: always()
+        working-directory: examples/local
+        env:
+          PODMAN: sudo podman
+        run: ./down.sh

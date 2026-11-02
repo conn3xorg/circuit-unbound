@@ -1,5 +1,7 @@
 # circuit-unbound
 
+[![Conn3x grade](https://conn3x.org/circuits/unbound/grade.svg)](https://conn3x.org/circuits/unbound/grade)
+
 A Conn3x circuit that installs Unbound, a validating, caching DNS resolver, from your distribution's own packages. It asks the root servers itself, or forwards to upstreams you pick, over DNS over TLS if you like, and checks DNSSEC signatures on every answer, so a forged record comes back as `SERVFAIL` rather than as an address. Names on your own network, such as `nas.home.arpa`, can be answered locally.
 
 The same settings land on Debian, Ubuntu, Fedora and Rocky Linux. The circuit picks the parts that differ: where each distribution reads extra config from, where its CA bundle lives, and how it keeps the DNSSEC root key current. Each config change goes through `unbound-checkconf` before Unbound sees it. Optionally, the host itself can use Unbound for its own lookups, with systemd-resolved and NetworkManager set up to match.

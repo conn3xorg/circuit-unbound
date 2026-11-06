@@ -8,8 +8,10 @@ if command -v apt-get >/dev/null; then
 else
   dnf -y -q install bind-utils
 fi
-# The first lookups after a start also fetch the root's keys.
-for _ in $(seq 10); do dig @127.0.0.1 example.com | grep -q 'status: NOERROR' && break; sleep 2; done
+# The first lookups after a start also fetch the root's keys. A fetch that
+# fails is cached as bogus for val-bogus-ttl, 60 seconds by default, so the
+# wait outlasts it.
+for _ in $(seq 45); do dig @127.0.0.1 example.com | grep -q 'status: NOERROR' && break; sleep 2; done
 dig @127.0.0.1 example.com | tee /dev/stderr | grep -q 'flags:.* ad[ ;]'
 dig @127.0.0.1 dnssec-failed.org | grep -q 'status: SERVFAIL'
 [ "$(dig +short @127.0.0.1 nas.home.arpa)" = 192.168.1.10 ]

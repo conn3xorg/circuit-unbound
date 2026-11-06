@@ -10,7 +10,7 @@ The same settings land on Debian, Ubuntu, Fedora and Rocky Linux. The circuit pi
 
 ```hcl
 module "unbound" {
-  source = "github.com/conn3xorg/circuit-unbound?ref=v0.2.0"
+  source = "github.com/conn3xorg/circuit-unbound?ref=v0.2.2"
 
   hosts                = { dns = "192.168.1.2" }
   ssh_private_key_file = "~/.ssh/id_ed25519"

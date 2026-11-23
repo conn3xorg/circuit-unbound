@@ -96,9 +96,10 @@ circuit "stub" {
   }
 
   step "restart" {
-    command {
-      command  = "! systemctl is-active -q systemd-resolved || systemctl restart systemd-resolved"
-      triggers = conn3x_file.stub__off[each.key].revision
+    service_action {
+      name     = "systemd-resolved"
+      action   = "try-restart"
+      triggers = { off = conn3x_file.stub__off[each.key].revision }
     }
   }
 
@@ -227,9 +228,10 @@ circuit "system_resolver" {
   }
 
   step "resolved_restart" {
-    command {
-      command  = "! systemctl is-active -q systemd-resolved || systemctl restart systemd-resolved"
-      triggers = conn3x_file.system_resolver__resolved[each.key].revision
+    service_action {
+      name     = "systemd-resolved"
+      action   = "try-restart"
+      triggers = { resolved = conn3x_file.system_resolver__resolved[each.key].revision }
     }
   }
 
@@ -243,9 +245,10 @@ circuit "system_resolver" {
   }
 
   step "networkmanager_reload" {
-    command {
-      command  = "! systemctl is-active -q NetworkManager || systemctl reload NetworkManager"
-      triggers = conn3x_file.system_resolver__networkmanager[each.key].revision
+    service_action {
+      name     = "NetworkManager"
+      action   = "try-reload"
+      triggers = { networkmanager = conn3x_file.system_resolver__networkmanager[each.key].revision }
     }
   }
 

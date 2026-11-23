@@ -139,7 +139,7 @@ The circuit uses each distribution's package, so the version follows the distrib
 
 ## Requirements
 
-Requires Conn3x v0.6.5 or later and systemd on each host, with a package mirror the host can reach. Full recursion needs outbound UDP and TCP on port 53; DNS over TLS needs outbound TCP on 853.
+Requires Conn3x v0.30.0 or later and systemd on each host, with a package mirror the host can reach. Full recursion needs outbound UDP and TCP on port 53; DNS over TLS needs outbound TCP on 853.
 
 ## Tested on
 
